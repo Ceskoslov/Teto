@@ -1,0 +1,11 @@
+# Allow only the build inputs and runtime application into the context.
+**
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!evaluator/
+!evaluator/**
+evaluator/**/__pycache__/
+evaluator/**/*.pyc

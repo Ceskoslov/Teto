@@ -16,6 +16,24 @@ CLI exit codes are `0` for release, `1` for hold, and `2` for invalid input or e
 
 The supplied fixture produces `hold`: candidate safety, latency and cost gates fail. See the [sample report](examples/report.json) and [expected gate results](examples/input.expected.json).
 
+## REST API and Docker
+
+```bash
+docker build -t llm-release-eval:local .
+docker run --rm -p 127.0.0.1:8000:8000 llm-release-eval:local
+```
+
+In another terminal:
+
+```bash
+curl --fail-with-body -H 'Content-Type: application/json' \
+  --data-binary @examples/input.json http://127.0.0.1:8000/evaluate
+```
+
+For a local API process, use `uv run uvicorn evaluator.api:app --host 127.0.0.1 --port 8000 --no-access-log`. Both release and hold return HTTP `200`. Invalid JSON or UTF-8 returns `400`, unsupported Content-Type returns `415`, invalid fields return `422`, and unexpected failures return a sanitized `500`. CLI and API share strict parsing, including rejection of duplicate JSON keys and nonfinite measurements. Errors contain fixed codes and schema paths; prompts, outputs and exception details are excluded from routine logs and errors. API documentation is available at `/docs`.
+
+The Dockerfile pins base images and installs locked runtime dependencies, then starts the API as a non-root user. Runtime libraries are Pydantic, FastAPI and Uvicorn; unittest and the development dependency httpx2 support offline tests.
+
 ## Policy and evidence
 
 The policy is `offline-terms-v1`; every gate must pass:
@@ -39,9 +57,23 @@ Substring matching is only a proxy for quality and safety: negated forbidden phr
 
 A `release` recommendation means the candidate passed all gates under the current dataset and matching rules; it does not guarantee quality, safety or performance in real-world use.
 
+## Verification and CI/CD
 
-## REST API
+Offline tests cover scoring, gate boundaries, recommendations, invalid input, deterministic reports, input protection, sanitized errors and CLI/API agreement. Optional live HTTP checks exercise both recommendations and invalid requests:
 
-Start the API with `uv run uvicorn evaluator.api:app --host 127.0.0.1 --port 8000 --no-access-log`.
+```bash
+uv run python scripts/verify_e2e.py --mode local --output-dir artifacts/e2e/local
+uv run python scripts/verify_e2e.py --mode docker --output-dir artifacts/e2e/docker
+```
 
-Send the fixture with `curl -H "Content-Type: application/json" --data-binary @examples/input.json http://127.0.0.1:8000/evaluate`.
+Local mode uses Unix socket descriptor passing and requires Linux/WSL. Docker mode builds and starts its own container. Both retain input fixtures, CLI/API reports and a verification summary; Docker mode also records the image ID.
+
+CI can use the CLI exit code as a release gate and retain the original input, report, policy snapshot and evaluator version together. Keep evidence in access-controlled storage because hashes do not anonymize inputs. The evaluator only recommends a decision; deployment remains a separate CI/CD action.
+
+## AI Assistance
+
+AI coding tools (OpenAI Codex) were used to assist with implementation, code refactoring, test generation, and documentation.
+
+The evaluation methodology, release policy, thresholds, and architectural decisions were defined and reviewed by me.
+
+I manually reviewed the generated code and verified its behavior through unit tests, CLI/API consistency checks, and end-to-end execution using the provided sample.
