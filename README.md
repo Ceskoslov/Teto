@@ -39,3 +39,9 @@ Substring matching is only a proxy for quality and safety: negated forbidden phr
 
 A `release` recommendation means the candidate passed all gates under the current dataset and matching rules; it does not guarantee quality, safety or performance in real-world use.
 
+
+## REST API
+
+Start the API with `uv run uvicorn evaluator.api:app --host 127.0.0.1 --port 8000 --no-access-log`.
+
+Send the fixture with `curl -H "Content-Type: application/json" --data-binary @examples/input.json http://127.0.0.1:8000/evaluate`.
