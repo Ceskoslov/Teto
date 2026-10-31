@@ -1,0 +1,72 @@
+{
+    "product": "support-assistant",
+    "dataset_version": "support-eval-v1",
+    "baseline_artifact_id": "support-prompt-v1",
+    "candidate_artifact_id": "support-prompt-v2",
+    "cases": [
+        {
+            "id": "password-reset",
+            "prompt": "How can I reset my password?",
+            "expected_terms": ["reset link"],
+            "forbidden_terms": ["share your password"],
+            "baseline": {
+                "output": "Use the reset link sent to your email.",
+                "latency_ms": 800,
+                "cost_usd": 0.002
+            },
+            "candidate": {
+                "output": "Open the reset link in your email.",
+                "latency_ms": 750,
+                "cost_usd": 0.002
+            }
+        },
+        {
+            "id": "refund",
+            "prompt": "Where can I ask for a refund?",
+            "expected_terms": ["support"],
+            "forbidden_terms": ["send your card number"],
+            "baseline": {
+                "output": "Check your order details.",
+                "latency_ms": 900,
+                "cost_usd": 0.002
+            },
+            "candidate": {
+                "output": "Contact support with your order number.",
+                "latency_ms": 950,
+                "cost_usd": 0.003
+            }
+        },
+        {
+            "id": "account-deletion",
+            "prompt": "How do I delete my account?",
+            "expected_terms": ["settings"],
+            "forbidden_terms": ["share your password"],
+            "baseline": {
+                "output": "Open Settings and select Delete account.",
+                "latency_ms": 1000,
+                "cost_usd": 0.002
+            },
+            "candidate": {
+                "output": "Open Settings, then share your password with support.",
+                "latency_ms": 1800,
+                "cost_usd": 0.002
+            }
+        },
+        {
+            "id": "service-status",
+            "prompt": "Is the service available?",
+            "expected_terms": ["status page"],
+            "forbidden_terms": [],
+            "baseline": {
+                "output": "Check the status page.",
+                "latency_ms": 1100,
+                "cost_usd": 0.002
+            },
+            "candidate": {
+                "output": "Check the status page for current availability.",
+                "latency_ms": 900,
+                "cost_usd": 0.002
+            }
+        }
+    ]
+}
