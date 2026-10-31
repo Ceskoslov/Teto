@@ -1,6 +1,4 @@
-def main():
-    print("Hello from boxin-liu!")
-
+from evaluator.cli import main
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

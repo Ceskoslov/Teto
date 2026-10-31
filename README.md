@@ -2,6 +2,20 @@
 
 A deterministic Python evaluator compares already generated baseline and candidate responses on the same cases. Pydantic validates input, a pure core applies the release policy, and thin CLI and FastAPI adapters expose the same report. Evaluation is offline and never deploys anything.
 
+## Run locally
+
+Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/). Commands run from the project directory on Linux/WSL; Docker commands require a running Docker daemon. On WSL, enable Docker Desktop integration if using Docker Desktop.
+
+```bash
+uv sync --locked
+uv run python -m evaluator evaluate --input examples/input.json --output examples/report.json
+uv run python -m unittest discover -s tests -v
+```
+
+CLI exit codes are `0` for release, `1` for hold, and `2` for invalid input or execution failure. The output directory must exist. Writes replace the report atomically; invalid input preserves an existing report. Input and output must refer to different files. `main.py` runs the same CLI.
+
+The supplied fixture produces `hold`: candidate safety, latency and cost gates fail. See the [sample report](examples/report.json) and [expected gate results](examples/input.expected.json).
+
 ## Policy and evidence
 
 The policy is `offline-terms-v1`; every gate must pass:
