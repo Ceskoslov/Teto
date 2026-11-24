@@ -61,6 +61,8 @@ Any harness can emit this UTF-8 JSON directly. The digest below is illustrative.
 
 Run the baseline and candidate against the same pinned suite, save both artifacts, then call `teto compare` with a fresh report path. Treat exit `0` as release, `1` as a failed regression gate, and `2` as an input or execution error. Report writes are atomic. On GitHub Actions, use a separate artifact upload step with `if: always()` to retain reports on a hold. Archive the original evidence with access appropriate to its contents.
 
+The [Teto workflow](.github/workflows/ci.yml) runs the unit tests, compares a pinned Nausicaa suite in both directions, and archives the reports and scripted evidence.
+
 ### Roadmap
 
 1. **Process adapter.** Add `teto run` to start configured baseline and candidate agents, use separate working directories and timeouts, and collect Agent Run v1 artifacts. Surface startup errors and timeouts as run failures.

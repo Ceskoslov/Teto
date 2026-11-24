@@ -10,7 +10,7 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -21,3 +21,37 @@ jobs:
       - run: uv sync --locked
       - run: uv run --locked teto --help
       - run: uv run --locked python -m unittest discover -s tests -v
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Ceskoslov/Nausicaa
+          ref: b23edbb908ffb3d51cd67b034519aaa68133a9e9
+          path: nausicaa
+          persist-credentials: false
+      - name: Prepare Nausicaa dependencies
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable fetch --manifest-path nausicaa/Cargo.toml --locked
+      - name: Compare Nausicaa's offline task suite
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/teto-evidence
+        run: |
+          mkdir "$EVIDENCE_DIR"
+          cargo +stable run --manifest-path nausicaa/Cargo.toml -p agent-harness-eval \
+            --locked --offline -- --output "$EVIDENCE_DIR/nausicaa"
+          uv run --locked teto import-nausicaa --input "$EVIDENCE_DIR/nausicaa/summary.json" \
+            --mode core_only --artifact-id nausicaa-core --output "$EVIDENCE_DIR/core.json"
+          uv run --locked teto import-nausicaa --input "$EVIDENCE_DIR/nausicaa/summary.json" \
+            --mode task --artifact-id nausicaa-task --output "$EVIDENCE_DIR/task.json"
+
+          uv run --locked teto compare --baseline "$EVIDENCE_DIR/core.json" \
+            --candidate "$EVIDENCE_DIR/task.json" --output "$EVIDENCE_DIR/release.json"
+          hold_code=0
+          uv run --locked teto compare --baseline "$EVIDENCE_DIR/task.json" \
+            --candidate "$EVIDENCE_DIR/core.json" --output "$EVIDENCE_DIR/hold.json" || hold_code=$?
+          test "$hold_code" -eq 1
+      - name: Archive comparison evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: teto-evidence
+          path: ${{ runner.temp }}/teto-evidence/
