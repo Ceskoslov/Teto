@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
+from .agent_runs import compare_runs, import_nausicaa, parse_agent_run
 from .core import evaluate
 from .validation import InputValidationError, validate_request
 
@@ -29,10 +30,10 @@ class _ArgumentParser(argparse.ArgumentParser):
         self.exit(2, _error("INVALID_ARGUMENTS", "CHECK_COMMAND_USAGE") + "\n")
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(prog: str) -> argparse.ArgumentParser:
     parser = _ArgumentParser(
-        prog="python -m evaluator",
-        description="Compare generated responses and write a release report.",
+        prog=prog,
+        description="Compare agent runs or generated responses for a release gate.",
         allow_abbrev=False,
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -44,9 +45,34 @@ def _parser() -> argparse.ArgumentParser:
     command.add_argument(
         "--input", type=Path, required=True, help="UTF-8 JSON input file."
     )
-    command.add_argument(
-        "--output", type=Path, required=True, help="Destination JSON report file."
+
+    importer = commands.add_parser(
+        "import-nausicaa",
+        help="Convert an offline Nausicaa summary to Agent Run v1.",
+        allow_abbrev=False,
     )
+    importer.add_argument(
+        "--input", type=Path, required=True, help="Nausicaa summary.json."
+    )
+    importer.add_argument("--mode", choices=("core_only", "task"), required=True)
+    importer.add_argument("--artifact-id", required=True, help="Version or build ID.")
+
+    comparison = commands.add_parser(
+        "compare",
+        help="Compare two Agent Run v1 artifacts.",
+        allow_abbrev=False,
+    )
+    comparison.add_argument(
+        "--baseline", type=Path, required=True, help="Baseline JSON file."
+    )
+    comparison.add_argument(
+        "--candidate", type=Path, required=True, help="Candidate JSON file."
+    )
+
+    for subcommand in (command, importer, comparison):
+        subcommand.add_argument(
+            "--output", type=Path, required=True, help="Destination JSON file."
+        )
     return parser
 
 
@@ -83,15 +109,18 @@ def _atomic_write(destination: Path, contents: str) -> None:
                 pass
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") -> int:
+    args = _parser(prog).parse_args(argv)
+    sources = (
+        (args.baseline, args.candidate) if args.command == "compare" else (args.input,)
+    )
     try:
-        if _same_file(args.input, args.output):
+        if any(_same_file(source, args.output) for source in sources):
             print(
                 _error("INVALID_ARGUMENTS", "INPUT_OUTPUT_MUST_DIFFER"), file=sys.stderr
             )
             return 2
-        text = args.input.read_text(encoding="utf-8")
+        inputs = [source.read_text(encoding="utf-8") for source in sources]
     except UnicodeError:
         print(_error("INVALID_INPUT", "UTF8_REQUIRED"), file=sys.stderr)
         return 2
@@ -100,10 +129,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        report = evaluate(validate_request(text))
+        match args.command:
+            case "import-nausicaa":
+                run = import_nausicaa(inputs[0], args.mode, args.artifact_id)
+                result = run.model_dump(mode="json")
+            case "compare":
+                baseline, candidate = inputs
+                result = compare_runs(
+                    parse_agent_run(baseline, "$.baseline"),
+                    parse_agent_run(candidate, "$.candidate"),
+                )
+            case "evaluate":
+                result = evaluate(validate_request(inputs[0]))
         contents = (
             json.dumps(
-                report,
+                result,
                 indent=2,
                 ensure_ascii=False,
                 allow_nan=False,
@@ -124,4 +164,10 @@ def main(argv: list[str] | None = None) -> int:
         print(_error("IO_ERROR", "REPORT_WRITE_FAILED"), file=sys.stderr)
         return 2
 
-    return 0 if report["recommendation"]["decision"] == "release" else 1
+    if args.command == "import-nausicaa":
+        return 0
+    return 0 if result["recommendation"]["decision"] == "release" else 1
+
+
+def teto_main() -> int:
+    return main(prog="teto")

@@ -1,10 +1,75 @@
-# Offline LLM release evaluation
+# Teto — Agent Regression Gate
 
-A deterministic Python evaluator compares already generated baseline and candidate responses on the same cases. Pydantic validates input, a pure core applies the release policy, and thin CLI and FastAPI adapters expose the same report. Evaluation is offline and never deploys anything.
+Teto compares baseline and candidate agent runs on the same fixtures and returns a release recommendation for CI. Your harness runs the agents and verifies their work. Teto compares the resulting evidence offline. Its text evaluator also supports paired LLM responses through the CLI and FastAPI.
 
-## Run locally
+## Agent regression quick start
 
-Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/). Commands run from the project directory on Linux/WSL; Docker commands require a running Docker daemon. On WSL, enable Docker Desktop integration if using Docker Desktop.
+Install with Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --locked
+uv run --locked teto --help
+```
+
+The [Nausicaa task suite](https://github.com/Ceskoslov/Nausicaa/tree/main/crates/eval) exercises the task acceptance loop with a scripted model. To produce a sample comparison, use a sibling Nausicaa checkout with its Rust dependencies cached. Run these commands from the Teto checkout.
+
+```bash
+evidence_dir="$(mktemp -d)"
+cargo run --manifest-path ../Nausicaa/Cargo.toml -p agent-harness-eval \
+  --locked --offline -- --output "$evidence_dir/nausicaa"
+
+uv run --locked teto import-nausicaa \
+  --input "$evidence_dir/nausicaa/summary.json" --mode core_only \
+  --artifact-id nausicaa-core --output "$evidence_dir/baseline.json"
+uv run --locked teto import-nausicaa \
+  --input "$evidence_dir/nausicaa/summary.json" --mode task \
+  --artifact-id nausicaa-task --output "$evidence_dir/candidate.json"
+
+uv run --locked teto compare \
+  --baseline "$evidence_dir/baseline.json" \
+  --candidate "$evidence_dir/candidate.json" \
+  --output "$evidence_dir/report.json"
+```
+
+The scripted comparison returns `release`. Swapping the baseline and candidate returns `hold`. The importer reads offline `task-baseline-v1` summaries. It accepts the suite's deliberate interruption and rejects unexpected turn errors in the selected mode. The output contains fixture digests and verdicts, while prompts, source text, and event logs stay in the original evidence.
+
+### Agent Run v1
+
+Any harness can emit this UTF-8 JSON directly. The digest below is illustrative.
+
+```json
+{
+  "schema_version": 1,
+  "suite_id": "coding-smoke-v1",
+  "artifact_id": "candidate-build-42",
+  "cases": [
+    {
+      "id": "repair",
+      "fixture_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reported_success": true,
+      "verified_success": true
+    }
+  ]
+}
+```
+
+- Give each run a distinct build ID and use the same suite ID, case IDs, and fixture digests on both sides. Case order can differ. Hash the immutable fixture specification, including acceptance criteria and the initial state, before running either version.
+- Generate the artifact in the trusted test host. Set `reported_success` from the runtime's completion status and `verified_success` from an independent assertion over the output or result. Emit a complete suite or fail the upstream job if evidence is missing.
+- The `agent-regression-v1` policy holds if any baseline-verified case fails candidate verification, or if the candidate reports completion for any unverified case. Reports list each failed gate and include SHA-256 digests of both validated run objects serialized as compact UTF-8 JSON with sorted object keys and original array order.
+
+### CI integration
+
+Run the baseline and candidate against the same pinned suite, save both artifacts, then call `teto compare` with a fresh report path. Treat exit `0` as release, `1` as a failed regression gate, and `2` as an input or execution error. Report writes are atomic. On GitHub Actions, use a separate artifact upload step with `if: always()` to retain reports on a hold. Archive the original evidence with access appropriate to its contents.
+
+### Roadmap
+
+1. **Process adapter.** Add `teto run` to start configured baseline and candidate agents, use separate working directories and timeouts, and collect Agent Run v1 artifacts. Surface startup errors and timeouts as run failures.
+2. **Shared evaluation service.** Run the same validation, comparison, and reporting logic behind an asynchronous job API. A run-and-evaluate job launches the process adapter through a worker. An upload-and-evaluate job accepts completed artifacts. Both share job status, idempotent submission, evidence storage, and report retrieval.
+3. **Nausicaa host plugin.** Submit completed runs after independent verification and durable evidence capture. The plugin handles host events and artifact mapping. It uses the service's upload-and-evaluate path, which can also receive results from an Ohmu-specific exporter.
+
+## Text response evaluation
+
+Run commands from the project directory on Linux/WSL. Docker commands require a running Docker daemon. On WSL, enable Docker Desktop integration if using Docker Desktop.
 
 ```bash
 uv sync --locked
@@ -70,9 +135,9 @@ Local mode uses Unix socket descriptor passing and requires Linux/WSL. Docker mo
 
 CI can use the CLI exit code as a release gate and retain the original input, report, policy snapshot and evaluator version together. Keep evidence in access-controlled storage because hashes do not anonymize inputs. The evaluator only recommends a decision; deployment remains a separate CI/CD action.
 
-## AI Assistance
+## Text evaluator provenance
 
-AI coding tools (OpenAI Codex) were used to assist with implementation, code refactoring, test generation, and documentation.
+AI coding tools (OpenAI Codex) were used to assist with implementation, code refactoring, test generation, and documentation for the original text evaluator.
 
 The evaluation methodology, release policy, thresholds, and architectural decisions were defined and reviewed by me.
 

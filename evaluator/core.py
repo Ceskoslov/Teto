@@ -1,7 +1,5 @@
 """Pure, deterministic evaluation of previously generated responses."""
 
-import hashlib
-import json
 import operator
 from fractions import Fraction
 from typing import Any
@@ -9,6 +7,7 @@ from typing import Any
 from .models import Case, EvaluationRequest, ResponseObservation
 from .policy import DEFAULT_POLICY, ReleasePolicy
 from .text import normalize_text
+from .validation import json_sha256
 
 EVALUATOR_VERSION = "0.1.0"
 REPORT_SCHEMA_VERSION = "1.0"
@@ -17,17 +16,6 @@ REPORT_SCHEMA_VERSION = "1.0"
 def _number(value: float) -> Fraction:
     # Use the validated decimal representation, not float's binary expansion.
     return Fraction(str(value))
-
-
-def _digest(value: Any) -> str:
-    serialized = json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    )
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _render(value: Any) -> Any:
@@ -264,8 +252,8 @@ def evaluate(
                 "dataset_version": request.dataset_version,
                 "baseline_artifact_id": request.baseline_artifact_id,
                 "candidate_artifact_id": request.candidate_artifact_id,
-                "input_sha256": _digest(request.model_dump(mode="json")),
-                "policy_sha256": _digest(snapshot),
+                "input_sha256": json_sha256(request.model_dump(mode="json")),
+                "policy_sha256": json_sha256(snapshot),
                 "evaluator_version": EVALUATOR_VERSION,
             },
             "policy": snapshot,

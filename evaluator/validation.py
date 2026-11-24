@@ -1,3 +1,4 @@
+import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -170,8 +171,19 @@ def _model_issues(
     return issues
 
 
-def validate_request(text: str) -> EvaluationRequest:
-    """Parse and validate JSON for both adapters."""
+def json_sha256(value: Any) -> str:
+    serialized = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def parse_json(text: str) -> Any:
+    """Parse UTF-8-compatible JSON without ambiguous object keys."""
     try:
         data = json.loads(
             text,
@@ -194,7 +206,12 @@ def validate_request(text: str) -> EvaluationRequest:
                 ValidationIssue(path="$", code="MALFORMED_JSON"),
             ],
         ) from None
+    return data
 
+
+def validate_request(text: str) -> EvaluationRequest:
+    """Parse and validate JSON for both adapters."""
+    data = parse_json(text)
     try:
         return EvaluationRequest.model_validate(data)
     except ValidationError as exception:
