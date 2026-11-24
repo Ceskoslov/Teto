@@ -63,11 +63,7 @@ Run the baseline and candidate against the same pinned suite, save both artifact
 
 The [Teto workflow](.github/workflows/ci.yml) runs the unit tests, compares a pinned Nausicaa suite in both directions, and archives the reports and scripted evidence.
 
-### Roadmap
-
-1. **Process adapter.** Add `teto run` to start configured baseline and candidate agents, use separate working directories and timeouts, and collect Agent Run v1 artifacts. Surface startup errors and timeouts as run failures.
-2. **Shared evaluation service.** Run the same validation, comparison, and reporting logic behind an asynchronous job API. A run-and-evaluate job launches the process adapter through a worker. An upload-and-evaluate job accepts completed artifacts. Both share job status, idempotent submission, evidence storage, and report retrieval.
-3. **Nausicaa host plugin.** Submit completed runs after independent verification and durable evidence capture. The plugin handles host events and artifact mapping. It uses the service's upload-and-evaluate path, which can also receive results from an Ohmu-specific exporter.
+See the [roadmap](ROADMAP.md) for the standalone scoring workflow, reproducible runs, and shared service.
 
 ## Text response evaluation
 
