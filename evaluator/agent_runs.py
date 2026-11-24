@@ -55,13 +55,19 @@ class _NausicaaFixture(InputModel):
 
 
 # The upstream report also contains local paths, timings, and other diagnostics.
-class _NausicaaRun(InputModel, extra="ignore"):
+class NausicaaRun(InputModel, extra="allow"):
     fixture: _NausicaaFixture
     mode: NausicaaMode
     reported_success: bool
     verified_success: bool
     live_model: bool
     turn_errors: list[str]
+
+    def has_unexpected_turn_errors(self) -> bool:
+        return bool(self.turn_errors) and (
+            not self.fixture.interrupt_execution
+            or self.turn_errors != [_INJECTED_INTERRUPTION]
+        )
 
 
 class _NausicaaSummary(InputModel, extra="ignore"):
@@ -70,7 +76,7 @@ class _NausicaaSummary(InputModel, extra="ignore"):
     live_config: None
     provider_settings: None
     skipped_fault_injection_fixtures: list[str] = Field(max_length=0)
-    runs: list[_NausicaaRun] = Field(min_length=1)
+    runs: list[NausicaaRun] = Field(min_length=1)
 
 
 def _invalid(issue: str, path: str = "$") -> InputValidationError:
@@ -92,7 +98,7 @@ def parse_agent_run(text: str, side: str) -> AgentRun:
         raise _run_issues(exception, side) from None
 
 
-def import_nausicaa(text: str, mode: NausicaaMode, artifact_id: str) -> AgentRun:
+def read_nausicaa_runs(text: str, mode: NausicaaMode) -> list[tuple[int, NausicaaRun]]:
     data = parse_json(text)
     try:
         summary = _NausicaaSummary.model_validate(data)
@@ -100,15 +106,18 @@ def import_nausicaa(text: str, mode: NausicaaMode, artifact_id: str) -> AgentRun
         raise _invalid("UNSUPPORTED_NAUSICAA_SUMMARY") from None
     if any(run.live_model for run in summary.runs):
         raise _invalid("UNSUPPORTED_NAUSICAA_SUMMARY")
+    selected = [
+        (index, run) for index, run in enumerate(summary.runs) if run.mode == mode
+    ]
+    if not selected:
+        raise _invalid("NAUSICAA_MODE_MISSING", "$.runs")
+    return selected
 
+
+def import_nausicaa(text: str, mode: NausicaaMode, artifact_id: str) -> AgentRun:
     cases = []
-    for run in summary.runs:
-        if run.mode != mode:
-            continue
-        if run.turn_errors and (
-            not run.fixture.interrupt_execution
-            or run.turn_errors != [_INJECTED_INTERRUPTION]
-        ):
+    for _, run in read_nausicaa_runs(text, mode):
+        if run.has_unexpected_turn_errors():
             raise _invalid("NAUSICAA_TURN_FAILED", "$.runs")
         cases.append(
             AgentCase(
@@ -118,9 +127,6 @@ def import_nausicaa(text: str, mode: NausicaaMode, artifact_id: str) -> AgentRun
                 verified_success=run.verified_success,
             )
         )
-    if not cases:
-        raise _invalid("NAUSICAA_MODE_MISSING", "$.runs")
-
     try:
         return AgentRun(
             schema_version=1,

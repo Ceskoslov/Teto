@@ -31,7 +31,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           cargo +stable fetch --manifest-path nausicaa/Cargo.toml --locked
-      - name: Compare Nausicaa's offline task suite
+      - name: Verify offline comparison and scoring
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/teto-evidence
         run: |
@@ -49,7 +49,26 @@ jobs:
           uv run --locked teto compare --baseline "$EVIDENCE_DIR/task.json" \
             --candidate "$EVIDENCE_DIR/core.json" --output "$EVIDENCE_DIR/hold.json" || hold_code=$?
           test "$hold_code" -eq 1
-      - name: Archive comparison evidence
+
+          uv run --locked teto score nausicaa --input "$EVIDENCE_DIR/nausicaa/summary.json" \
+            --mode task --artifact-id nausicaa-task --output "$EVIDENCE_DIR/nausicaa-scores.json"
+          uv run --locked teto score ohmu --input examples/ohmu-evaluation.json \
+            --cases examples/ohmu-cases.json --artifact-id ohmu-example --output "$EVIDENCE_DIR/ohmu-scores.json"
+
+          uv run --locked python - "$EVIDENCE_DIR" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          evidence = Path(sys.argv[1])
+          nausicaa = json.loads((evidence / "nausicaa-scores.json").read_text())
+          assert nausicaa["summary"]["verified_success"]["counts"]["pass"] == 2
+          assert nausicaa["summary"]["receipt_expectations"]["counts"]["pass"] == 5
+          ohmu = json.loads((evidence / "ohmu-scores.json").read_text())
+          assert ohmu["summary"]["expected_source_recall"]["mean"] == 0.5
+          assert ohmu["summary"]["abstention"]["counts"]["unscored"] == 1
+          PY
+      - name: Archive evaluation evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

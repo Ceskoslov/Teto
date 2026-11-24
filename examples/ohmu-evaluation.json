@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "config": {
+    "endpoint": "http://127.0.0.1:1",
+    "model": "scripted-example",
+    "token_counter": "fixture",
+    "context_window": 1024,
+    "output_tokens": 128,
+    "no_api_key": true
+  },
+  "cases_sha256": "32704667746b18a37ca5fdccc557513a1ca882cf55d8e859c1051badf2c200b1",
+  "results": [
+    {
+      "id": "source-coverage",
+      "accepted": true,
+      "partial": true,
+      "elapsed_ms": 10,
+      "quote_checks_passed": true,
+      "cited_sources": [
+        "returns-policy"
+      ],
+      "expected_source_recall": 0.5,
+      "abstained": false,
+      "expected_abstain": false,
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 3
+      },
+      "estimated_cost_usd": null,
+      "human_answer_support": null,
+      "human_contradiction_handling": null,
+      "answer": {
+        "facts": [
+          {
+            "claim": "The returns policy covers the return period.",
+            "citations": [
+              {
+                "locator": {
+                  "source_id": "returns-policy"
+                }
+              }
+            ]
+          }
+        ],
+        "synthesis": [],
+        "contradictions": [],
+        "evidence_gaps": [
+          "The exchange policy was unavailable."
+        ]
+      },
+      "reason": null
+    },
+    {
+      "id": "expected-abstention",
+      "accepted": true,
+      "partial": true,
+      "elapsed_ms": 10,
+      "quote_checks_passed": true,
+      "cited_sources": [],
+      "expected_source_recall": null,
+      "abstained": true,
+      "expected_abstain": true,
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 3
+      },
+      "estimated_cost_usd": null,
+      "human_answer_support": null,
+      "human_contradiction_handling": null,
+      "answer": {
+        "facts": [],
+        "synthesis": [],
+        "contradictions": [],
+        "evidence_gaps": [
+          "The product is undocumented."
+        ]
+      },
+      "reason": null
+    },
+    {
+      "id": "rejected-answer",
+      "accepted": false,
+      "partial": true,
+      "elapsed_ms": 10,
+      "quote_checks_passed": false,
+      "cited_sources": [],
+      "expected_source_recall": 0.0,
+      "abstained": true,
+      "expected_abstain": false,
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 3
+      },
+      "estimated_cost_usd": null,
+      "human_answer_support": null,
+      "human_contradiction_handling": null,
+      "answer": {},
+      "reason": "Fixture rejected before acceptance."
+    }
+  ],
+  "semantic_quality": "Requires independent human review; quote identity is not entailment."
+}

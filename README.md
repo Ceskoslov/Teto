@@ -1,8 +1,8 @@
-# Teto — Agent Regression Gate
+# Teto — Agent Evaluation Pipeline
 
-Teto compares baseline and candidate agent runs on the same fixtures and returns a release recommendation for CI. Your harness runs the agents and verifies their work. Teto compares the resulting evidence offline. Its text evaluator also supports paired LLM responses through the CLI and FastAPI.
+Teto scores saved agent evidence and compares baseline and candidate runs for CI. Your harness runs the agents and captures the evidence, then Teto scores it offline. The text evaluator also supports paired LLM responses through the CLI and FastAPI.
 
-## Agent regression quick start
+## Standalone scoring
 
 Install with Python 3.13+ and [uv](https://docs.astral.sh/uv/).
 
@@ -10,6 +10,35 @@ Install with Python 3.13+ and [uv](https://docs.astral.sh/uv/).
 uv sync --locked
 uv run --locked teto --help
 ```
+
+Score the included synthetic Ohmu evidence with its original annotations:
+
+```bash
+evidence_dir="$(mktemp -d)"
+uv run --locked teto score ohmu \
+  --input examples/ohmu-evaluation.json --cases examples/ohmu-cases.json \
+  --artifact-id ohmu-example --output "$evidence_dir/ohmu-scores.json"
+```
+
+Ohmu's evaluation script emits `evaluation.json`. Teto checks that the original annotation file matches its recorded SHA-256 and that both files contain the same case IDs. It recomputes expected-source recall using the cited source IDs and checks abstention against the annotations. The host-acceptance and quote-verification metrics use Ohmu's verdicts. A rejected answer counts against host acceptance and leaves the answer-dependent metrics unscored. An accepted abstention without quotes leaves quote verification unscored. Quote verification reflects the host's evidence checks. Semantic support requires a separate grader.
+
+For Nausicaa, run the suite in the next section and score either mode directly:
+
+```bash
+uv run --locked teto score nausicaa \
+  --input "$evidence_dir/nausicaa/summary.json" --mode task \
+  --artifact-id nausicaa-task --output "$evidence_dir/nausicaa-scores.json"
+```
+
+This scores verified task success, false completion, and fixture-specific denial and unknown-receipt counts. The planned interruption is part of the suite. Unexpected turn errors yield per-case scoring errors. Use `teto score agent-run --input candidate.json --output scores.json` to score a generic Agent Run v1 artifact without receipt checks.
+
+### Score Report v1
+
+- The report identifies the input by its byte-level SHA-256, records scorer IDs and versions, and points to each source case with a JSON Pointer. It contains metric values and fixed reason codes. The original source files hold the prompts, answers, and raw logs.
+- Each metric reports `pass`, `fail`, `unscored` for unavailable evidence or annotations, or `error` for invalid measurement or failed execution. Summary means use scored cases and report the count for every status. Repeat `--metric` to select a subset of scorers.
+- `teto score` returns `0` after writing a report, including reports with negative verdicts or case errors. It returns `2` when the input cannot be scored or the report cannot be written. Use `teto compare` for the paired release gate.
+
+## Agent regression quick start
 
 The [Nausicaa task suite](https://github.com/Ceskoslov/Nausicaa/tree/main/crates/eval) exercises the task acceptance loop with a scripted model. To produce a sample comparison, use a sibling Nausicaa checkout with its Rust dependencies cached. Run these commands from the Teto checkout.
 
@@ -61,7 +90,7 @@ Any harness can emit this UTF-8 JSON directly. The digest below is illustrative.
 
 Run the baseline and candidate against the same pinned suite, save both artifacts, then call `teto compare` with a fresh report path. Treat exit `0` as release, `1` as a failed regression gate, and `2` as an input or execution error. Report writes are atomic. On GitHub Actions, use a separate artifact upload step with `if: always()` to retain reports on a hold. Archive the original evidence with access appropriate to its contents.
 
-The [Teto workflow](.github/workflows/ci.yml) runs the unit tests, compares a pinned Nausicaa suite in both directions, and archives the reports and scripted evidence.
+The [Teto workflow](.github/workflows/ci.yml) runs the unit tests, compares a pinned Nausicaa suite in both directions, and scores both Nausicaa and the synthetic Ohmu example. It archives the reports and scripted evidence.
 
 See the [roadmap](ROADMAP.md) for the standalone scoring workflow, reproducible runs, and shared service.
 

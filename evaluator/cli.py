@@ -10,6 +10,7 @@ from typing import NoReturn
 
 from .agent_runs import compare_runs, import_nausicaa, parse_agent_run
 from .core import evaluate
+from .scoring import METRICS, score_artifact
 from .validation import InputValidationError, validate_request
 
 
@@ -33,7 +34,7 @@ class _ArgumentParser(argparse.ArgumentParser):
 def _parser(prog: str) -> argparse.ArgumentParser:
     parser = _ArgumentParser(
         prog=prog,
-        description="Compare agent runs or generated responses for a release gate.",
+        description="Score saved agent evidence or compare runs for a release gate.",
         allow_abbrev=False,
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -73,6 +74,38 @@ def _parser(prog: str) -> argparse.ArgumentParser:
         subcommand.add_argument(
             "--output", type=Path, required=True, help="Destination JSON file."
         )
+
+    scoring = commands.add_parser(
+        "score", help="Score one saved artifact.", allow_abbrev=False
+    )
+    formats = scoring.add_subparsers(dest="format", required=True)
+    for name, metrics in METRICS.items():
+        source = formats.add_parser(name, allow_abbrev=False)
+        source.add_argument(
+            "--input", type=Path, required=True, help="Evidence JSON file."
+        )
+        source.add_argument(
+            "--output", type=Path, required=True, help="Score report file."
+        )
+        source.add_argument(
+            "--metric",
+            action="append",
+            choices=metrics,
+            help="Select a metric. Repeat to select several.",
+        )
+        if name != "agent-run":
+            source.add_argument(
+                "--artifact-id", required=True, help="Version or build ID."
+            )
+        if name == "nausicaa":
+            source.add_argument("--mode", choices=("core_only", "task"), required=True)
+        if name == "ohmu":
+            source.add_argument(
+                "--cases",
+                type=Path,
+                required=True,
+                help="Original Ohmu case annotations.",
+            )
     return parser
 
 
@@ -114,13 +147,19 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
     sources = (
         (args.baseline, args.candidate) if args.command == "compare" else (args.input,)
     )
+    if args.command == "score" and args.format == "ohmu":
+        sources += (args.cases,)
     try:
         if any(_same_file(source, args.output) for source in sources):
             print(
                 _error("INVALID_ARGUMENTS", "INPUT_OUTPUT_MUST_DIFFER"), file=sys.stderr
             )
             return 2
-        inputs = [source.read_text(encoding="utf-8") for source in sources]
+        if args.command == "score":
+            # Preserve the original newlines for evidence and annotation digests.
+            inputs = [source.read_bytes().decode("utf-8") for source in sources]
+        else:
+            inputs = [source.read_text(encoding="utf-8") for source in sources]
     except UnicodeError:
         print(_error("INVALID_INPUT", "UTF8_REQUIRED"), file=sys.stderr)
         return 2
@@ -141,6 +180,15 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
                 )
             case "evaluate":
                 result = evaluate(validate_request(inputs[0]))
+            case "score":
+                result = score_artifact(
+                    inputs[0],
+                    source=args.format,
+                    metrics=args.metric,
+                    artifact_id=getattr(args, "artifact_id", None),
+                    mode=getattr(args, "mode", None),
+                    annotations_text=inputs[1] if len(inputs) > 1 else None,
+                )
         contents = (
             json.dumps(
                 result,
@@ -164,7 +212,7 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
         print(_error("IO_ERROR", "REPORT_WRITE_FAILED"), file=sys.stderr)
         return 2
 
-    if args.command == "import-nausicaa":
+    if args.command in {"import-nausicaa", "score"}:
         return 0
     return 0 if result["recommendation"]["decision"] == "release" else 1
 

@@ -1,0 +1,19 @@
+[
+  {
+    "id": "source-coverage",
+    "question": "Which documents describe returns and exchanges?",
+    "expected_sources": ["returns-policy", "exchange-policy"],
+    "expected_abstain": false
+  },
+  {
+    "id": "expected-abstention",
+    "question": "What is the policy for a product that the wiki never mentions?",
+    "expected_abstain": true
+  },
+  {
+    "id": "rejected-answer",
+    "question": "What is the deadline for returns?",
+    "expected_sources": ["returns-policy"],
+    "expected_abstain": false
+  }
+]

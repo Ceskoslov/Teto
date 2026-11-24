@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -105,6 +106,11 @@ class AgentCLITests(unittest.TestCase):
             f"nausicaa-{mode}",
             "--output",
             output,
+        )
+
+    def score(self, source, evidence, *options):
+        return self.run_cli(
+            "score", source, "--input", evidence, "--output", self.report, *options
         )
 
     def assert_issue(self, process, code):
@@ -224,4 +230,110 @@ class AgentCLITests(unittest.TestCase):
         self.summary.write_text(json.dumps(summary))
         self.assert_issue(
             self.import_summary("task", self.candidate), "UNSUPPORTED_NAUSICAA_SUMMARY"
+        )
+
+    def test_score_agent_run_without_baseline_and_select_metrics(self):
+        self.candidate.write_text(
+            json.dumps(
+                agent_run("candidate", agent_case("missed", False, reported=True))
+            )
+        )
+        result = self.score("agent-run", self.candidate)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(report["score_report_schema_version"], 1)
+        self.assertEqual(report["evidence"]["artifact_id"], "candidate")
+        self.assertEqual(report["summary"]["verified_success"]["counts"]["fail"], 1)
+        self.assertEqual(
+            report["cases"][0]["scores"]["no_false_completion"]["reason"],
+            "false_completion",
+        )
+
+        self.assertEqual(self.score("agent-run", self.candidate).returncode, 0)
+        first = self.report.read_bytes()
+        self.assertEqual(self.score("agent-run", self.candidate).returncode, 0)
+        self.assertEqual(self.report.read_bytes(), first)
+
+        selected = self.score(
+            "agent-run", self.candidate, "--metric", "verified_success"
+        )
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(
+            report["scorers"], {"verified_success": "agent-run/verified_success@1"}
+        )
+        self.assertEqual(set(report["cases"][0]["scores"]), {"verified_success"})
+
+    def test_score_nausicaa_receipts_and_unexpected_errors(self):
+        summary = nausicaa_summary()
+        task = summary["runs"][1]
+        task.update(denied_receipts=0, unknown_receipts=1)
+        options = ("--mode", "task", "--artifact-id", "fixture")
+
+        for change, status in (
+            ({}, "fail"),
+            ({"unknown_receipts": 0}, "pass"),
+            ({"unknown_receipts": None}, "unscored"),
+            ({"unknown_receipts": True}, "error"),
+            ({"turn_errors": ["PRIVATE_INSTRUCTION"]}, "error"),
+        ):
+            with self.subTest(change=change):
+                evidence = {**summary, "runs": [{**task, **change}]}
+                self.summary.write_text(json.dumps(evidence))
+                result = self.score("nausicaa", self.summary, *options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = json.loads(self.report.read_text())
+                self.assertEqual(
+                    report["summary"]["receipt_expectations"]["counts"][status], 1
+                )
+                self.assertNotIn("PRIVATE_INSTRUCTION", self.report.read_text())
+                if "turn_errors" in change:
+                    self.assertEqual(
+                        report["summary"]["verified_success"]["counts"]["error"], 1
+                    )
+
+    def test_score_ohmu_recomputes_recall_and_separates_rejected_answers(self):
+        annotations = ROOT / "examples/ohmu-cases.json"
+        source = json.loads((ROOT / "examples/ohmu-evaluation.json").read_text())
+        source["results"][0]["expected_source_recall"] = 1.0
+        self.summary.write_text(json.dumps(source))
+        result = self.score(
+            "ohmu", self.summary, "--cases", annotations, "--artifact-id", "fixture"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(
+            report["evidence"]["input_sha256"],
+            hashlib.sha256(self.summary.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(report["summary"]["expected_source_recall"]["mean"], 0.5)
+        self.assertEqual(report["summary"]["host_acceptance"]["counts"]["fail"], 1)
+        cases = {case["id"]: case["scores"] for case in report["cases"]}
+        self.assertEqual(cases["expected-abstention"]["abstention"]["status"], "pass")
+        self.assertEqual(cases["rejected-answer"]["abstention"]["status"], "unscored")
+        self.assertNotIn("returns policy", self.report.read_text())
+
+    def test_score_ohmu_validates_raw_annotation_bytes_and_preserves_report(self):
+        self.report.write_text("previous report")
+        source = json.loads((ROOT / "examples/ohmu-evaluation.json").read_text())
+        annotations = (
+            (ROOT / "examples/ohmu-cases.json").read_bytes().replace(b"\n", b"\r\n")
+        )
+        self.candidate.write_bytes(annotations)
+        self.summary.write_text(json.dumps(source))
+        options = ("--cases", self.candidate, "--artifact-id", "fixture")
+        self.assert_issue(
+            self.score("ohmu", self.summary, *options),
+            "OHMU_ANNOTATIONS_DIGEST_MISMATCH",
+        )
+        self.assertEqual(self.report.read_text(), "previous report")
+
+        source["cases_sha256"] = hashlib.sha256(annotations).hexdigest()
+        self.summary.write_text(json.dumps(source))
+        self.assertEqual(self.score("ohmu", self.summary, *options).returncode, 0)
+
+        source["results"].pop()
+        self.summary.write_text(json.dumps(source))
+        self.assert_issue(
+            self.score("ohmu", self.summary, *options), "CASE_SETS_MUST_MATCH"
         )

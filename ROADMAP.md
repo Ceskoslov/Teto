@@ -8,6 +8,8 @@ Shipped. The CLI imports Nausicaa's offline task suite and compares paired Agent
 
 ## v0.2 · Standalone scoring
 
+Shipped. The CLI scores saved Nausicaa, Ohmu, and Agent Run v1 evidence. The report records the original evidence digests, selected scorer versions, and per-metric coverage.
+
 - Add `teto score` and a versioned report for one artifact. Record the scorer version, input digests, per-case results, and metric coverage. Keep scored failures, unavailable evidence, and execution errors distinct.
 - Score task success, false completion, and receipt expectations from Nausicaa. Score quote verification, expected-source coverage, and abstention from Ohmu. Reuse host verification when its source evidence is unavailable to Teto.
 - Retain `teto compare`, Agent Run v1, and the text evaluator. Verify both scoring paths offline in CI. The same evidence and scorer selection must produce a byte-identical report.
