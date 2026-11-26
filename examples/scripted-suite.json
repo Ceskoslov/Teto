@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "id": "uppercase-smoke-v1",
+  "mode": "offline",
+  "model": {
+    "id": "scripted-uppercase",
+    "revision": "1"
+  },
+  "harness": {
+    "id": "example-scripted-v1",
+    "sha256": "514a9b0b775ac9acbc8282231e9cd48b467c05f46192151ec997c7a2aca04018"
+  },
+  "environment": {
+    "platform": "linux",
+    "machine": "x86_64",
+    "python": "3.13.12",
+    "revision": "linux-cpython-stdlib-v1"
+  },
+  "trials": 2,
+  "limits": {
+    "trial_timeout_ms": 3000,
+    "trial_cost_microusd": 0,
+    "total_cost_microusd": 0
+  },
+  "cases": [
+    {
+      "id": "basic",
+      "prompt": "Read input.txt, capitalize the text and write it to result.txt.",
+      "slices": [
+        "file-transform",
+        "ascii"
+      ],
+      "files": {
+        "input.txt": "hello\n"
+      },
+      "acceptance": {
+        "output": "result.txt",
+        "exact_text": "HELLO\n",
+        "tool_calls": {
+          "read": 1,
+          "write": 1
+        }
+      }
+    },
+    {
+      "id": "accented",
+      "prompt": "Read input.txt, capitalize the text and write it to result.txt.",
+      "slices": [
+        "file-transform",
+        "unicode"
+      ],
+      "files": {
+        "input.txt": "café\n"
+      },
+      "acceptance": {
+        "output": "result.txt",
+        "exact_text": "CAFÉ\n",
+        "tool_calls": {
+          "read": 1,
+          "write": 1
+        }
+      }
+    }
+  ]
+}

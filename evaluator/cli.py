@@ -10,7 +10,9 @@ from typing import NoReturn
 
 from .agent_runs import compare_runs, import_nausicaa, parse_agent_run
 from .core import evaluate
+from .runner import run_suite
 from .scoring import METRICS, score_artifact
+from .suites import read_suite
 from .validation import InputValidationError, validate_request
 
 
@@ -34,7 +36,7 @@ class _ArgumentParser(argparse.ArgumentParser):
 def _parser(prog: str) -> argparse.ArgumentParser:
     parser = _ArgumentParser(
         prog=prog,
-        description="Score saved agent evidence or compare runs for a release gate.",
+        description="Run and score agent suites or compare saved runs.",
         allow_abbrev=False,
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,7 +72,14 @@ def _parser(prog: str) -> argparse.ArgumentParser:
         "--candidate", type=Path, required=True, help="Candidate JSON file."
     )
 
-    for subcommand in (command, importer, comparison):
+    runner = commands.add_parser(
+        "run", help="Execute a pinned suite.", allow_abbrev=False
+    )
+    runner.add_argument("--input", type=Path, required=True, help="Suite JSON file.")
+    runner.add_argument("--harness", type=Path, required=True, help="Pinned Python script.")
+    runner.add_argument("--artifact-id", required=True, help="Version or build ID.")
+
+    for subcommand in (command, importer, comparison, runner):
         subcommand.add_argument(
             "--output", type=Path, required=True, help="Destination JSON file."
         )
@@ -149,13 +158,18 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
     )
     if args.command == "score" and args.format == "ohmu":
         sources += (args.cases,)
+    if args.command == "run":
+        sources += (args.harness,)
     try:
         if any(_same_file(source, args.output) for source in sources):
             print(
                 _error("INVALID_ARGUMENTS", "INPUT_OUTPUT_MUST_DIFFER"), file=sys.stderr
             )
             return 2
-        if args.command == "score":
+        if args.command == "run":
+            suite_text = args.input.read_bytes().decode("utf-8")
+            harness = args.harness.read_bytes()
+        elif args.command == "score":
             # Preserve the original newlines for evidence and annotation digests.
             inputs = [source.read_bytes().decode("utf-8") for source in sources]
         else:
@@ -169,6 +183,9 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
 
     try:
         match args.command:
+            case "run":
+                run = run_suite(read_suite(suite_text), harness, args.artifact_id)
+                result = run.model_dump(mode="json")
             case "import-nausicaa":
                 run = import_nausicaa(inputs[0], args.mode, args.artifact_id)
                 result = run.model_dump(mode="json")
@@ -201,6 +218,9 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
     except InputValidationError as exception:
         print(json.dumps(exception.to_dict()), file=sys.stderr)
         return 2
+    except OSError:
+        print(_error("IO_ERROR", "EVALUATION_IO_FAILED"), file=sys.stderr)
+        return 2
     except (ArithmeticError, RuntimeError, TypeError, ValueError):
         # CLI boundary: never expose evidence or a traceback in diagnostics.
         print(_error("INTERNAL_ERROR", "EVALUATION_FAILED"), file=sys.stderr)
@@ -212,7 +232,7 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
         print(_error("IO_ERROR", "REPORT_WRITE_FAILED"), file=sys.stderr)
         return 2
 
-    if args.command in {"import-nausicaa", "score"}:
+    if args.command in {"import-nausicaa", "run", "score"}:
         return 0
     return 0 if result["recommendation"]["decision"] == "release" else 1
 
