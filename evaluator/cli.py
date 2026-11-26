@@ -80,6 +80,7 @@ def _parser(prog: str) -> argparse.ArgumentParser:
     runner.add_argument("--input", type=Path, required=True, help="Suite JSON file.")
     runner.add_argument("--harness", type=Path, required=True, help="Pinned Python script.")
     runner.add_argument("--artifact-id", required=True, help="Version or build ID.")
+    runner.add_argument("--require-mode", choices=("offline", "live"))
 
     gate = commands.add_parser(
         "gate", help="Apply a standalone release policy.", allow_abbrev=False
@@ -201,7 +202,16 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
     try:
         match args.command:
             case "run":
-                run = run_suite(read_suite(suite_text), harness, args.artifact_id)
+                suite = read_suite(suite_text)
+                if args.require_mode and args.require_mode != suite.mode:
+                    print(_error("INVALID_INPUT", "SUITE_MODE_MISMATCH"), file=sys.stderr)
+                    return 2
+                # Check the destination before a trial can spend provider budget.
+                if args.output.is_dir():
+                    raise IsADirectoryError
+                with tempfile.TemporaryFile(dir=args.output.parent):
+                    pass
+                run = run_suite(suite, harness, args.artifact_id)
                 result = run.model_dump(mode="json")
             case "import-nausicaa":
                 run = import_nausicaa(inputs[0], args.mode, args.artifact_id)

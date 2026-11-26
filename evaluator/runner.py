@@ -90,6 +90,7 @@ def _capture_trial(
         "case_id": case.id,
         "trial": number,
         "prompt": case.prompt,
+        "output_file": case.acceptance.output,
         "mode": suite.mode,
         "model": suite.model.model_dump(mode="json"),
         "environment_revision": suite.environment.revision,

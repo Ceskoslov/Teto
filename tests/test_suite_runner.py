@@ -1,8 +1,10 @@
+import io
 import json
 import platform
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 from evaluator.cli import main
@@ -30,6 +32,30 @@ def make_suite(data: dict):
 
 @unittest.skipUnless(sys.platform == "linux", "Linux suite runner")
 class SuiteRunnerTests(unittest.TestCase):
+    def test_cli_checks_mode_and_output_before_starting_harness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "started"
+            harness = f"from pathlib import Path\nPath({str(marker)!r}).touch()\n".encode()
+            suite_path = root / "suite.json"
+            script = root / "harness.py"
+            suite_path.write_text(json.dumps(suite_data(harness)))
+            script.write_bytes(harness)
+            argv = [
+                "run", "--input", str(suite_path), "--harness", str(script),
+                "--artifact-id", "preflight",
+            ]
+            with redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(main([
+                    *argv, "--require-mode", "live", "--output", str(root / "run.json"),
+                ]), 2)
+                self.assertEqual(main([
+                    *argv, "--output", str(root / "missing" / "run.json"),
+                ]), 2)
+            self.assertIn("SUITE_MODE_MISMATCH", errors.getvalue())
+            self.assertIn("EVALUATION_IO_FAILED", errors.getvalue())
+            self.assertFalse(marker.exists())
+
     def test_cli_captures_trials_in_fresh_workspaces(self):
         harness = b"""
 import json, os, sys

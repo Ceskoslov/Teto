@@ -1,6 +1,35 @@
 # Teto — Agent Evaluation Pipeline
 
-Teto scores saved agent evidence and compares baseline and candidate runs for CI. Your harness runs the agents and captures the evidence, then Teto scores it offline. The text evaluator also supports paired LLM responses through the CLI and FastAPI.
+Teto runs pinned agent evaluation suites, scores saved evidence offline, and applies standalone or paired release policies. The text evaluator also supports paired LLM responses through the CLI and FastAPI.
+
+## Reproducible runs and standalone policies
+
+The included smoke suite pins Linux x86-64 and Python 3.13.12. It runs two fixtures twice with a scripted harness. Start with [the suite](examples/scripted-suite.json), [the harness](examples/scripted-harness.py), and [the policy](examples/scripted-policy.json).
+
+```bash
+uv sync --locked --python 3.13.12
+evidence_dir="$(mktemp -d)"
+uv run --locked teto run --require-mode offline --input examples/scripted-suite.json \
+  --harness examples/scripted-harness.py --artifact-id scripted-smoke \
+  --output "$evidence_dir/run.json"
+uv run --locked teto score suite-run --input "$evidence_dir/run.json" \
+  --suite examples/scripted-suite.json --output "$evidence_dir/score.json"
+uv run --locked teto gate --input "$evidence_dir/run.json" --suite examples/scripted-suite.json \
+  --policy examples/scripted-policy.json --output "$evidence_dir/gate.json"
+```
+
+### Suite and harness contract
+
+- Suite v1 defines the fixture files, prompt, exact UTF-8 output, optional expected tool counts, slice membership, and trial count. It records the model snapshot, SHA-256 of the Python harness, and environment revision. Teto checks OS, architecture, Python patch version, and the harness digest before launching a trial. The harness owns the pinned model deployment and any dependencies identified by the environment revision.
+- Each trial gets a fresh working directory. Teto invokes the pinned script with Python isolated mode and passes one UTF-8 JSON request over stdin. The request includes `schema_version`, `case_id`, `trial`, `prompt`, `output_file`, `mode`, `model`, `environment_revision`, `timeout_ms`, and `cost_limit_microusd`. The harness writes its result to the requested file and emits one JSON object on stdout with `schema_version: 1`, `reported_success`, `cost_microusd`, and optional `tool_calls`. Tool counts come from the trusted harness. Teto independently captures the output digest. Run reviewed harness code and place any execution of untrusted agents inside the harness's own isolation boundary.
+- Teto terminates the trial process group on timeout. A microdollar is one millionth of a US dollar. Teto reserves the declared maximum before starting each trial, deducts reported spend, charges the full reservation when spend is unknown, and stops scheduling trials on an overrun. The harness must enforce the passed limit before billable calls, including retries, and report actual spend. A live suite requires a positive reservation.
+- Keep the Suite v1 document with the Suite Run v1 evidence. Running again produces new timing observations. Rescoring the same bytes produces a byte-identical report. Reports show overall and per-slice quality, false completion, tool expectations, execution reliability, latency, and observed cost. The per-metric counts distinguish failed checks, execution errors, and unscored evidence. A trial can appear in multiple slices.
+
+### Policy and scheduled live runs
+
+- `teto gate` applies a policy bound to the suite SHA-256. A `critical` check requires every selected trial to pass a binary metric. A `calibrated` check records a calibration ID and evidence SHA-256, and requires minimum scored trials, distinct cases, and coverage before comparing its configured mean or latency p95. An `observe` check records the metric without a vote. Gate inputs currently use fixed verifiers and harness measurements. Model graders require human-label calibration before they can enter a release policy.
+- `run` and `score` return `0` after writing evidence or a report. `gate` returns `0` for release and `1` for hold. Invalid inputs and CLI execution failures return `2`. Trial timeouts and harness errors appear in the evidence and can cause a gate to hold.
+- PR CI runs the scripted smoke suite. The [live workflow](.github/workflows/live.yml) is scheduled weekly and supports manual dispatch on the default branch. Enable it with repository variable `TETO_LIVE_ENABLED=true`. Set `TETO_LIVE_SUITE` and `TETO_LIVE_HARNESS` to paths committed on the default branch, and set secret `TETO_LIVE_API_KEY` if required by the harness. The workflow archives its run and score reports.
 
 ## Standalone scoring
 
@@ -92,7 +121,7 @@ Run the baseline and candidate against the same pinned suite, save both artifact
 
 The [Teto workflow](.github/workflows/ci.yml) runs the unit tests, compares a pinned Nausicaa suite in both directions, and scores both Nausicaa and the synthetic Ohmu example. It archives the reports and scripted evidence.
 
-See the [roadmap](ROADMAP.md) for the standalone scoring workflow, reproducible runs, and shared service.
+See the [roadmap](ROADMAP.md) for evaluation pipeline milestones.
 
 ## Text response evaluation
 

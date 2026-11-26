@@ -16,9 +16,9 @@ Shipped. The CLI scores saved Nausicaa, Ohmu, and Agent Run v1 evidence. The rep
 
 ## v0.3 · Reproducible runs and policy
 
-- Define versioned suites with fixtures, acceptance criteria, slices, and pinned model, harness, and environment metadata. Add `teto run` with separate workspaces, time and cost limits, and repeated trials.
-- Report task quality, tool behavior, reliability, latency, and cost by slice. Track sample counts and missing evidence. Keep deterministic PR checks small and run live suites on a separate schedule.
-- Introduce versioned standalone thresholds alongside paired regression. Use hard gates for deterministic critical checks, calibrated thresholds for well-sampled metrics, and observation for exploratory metrics. Calibrate model graders against human labels before they affect a release decision.
+Shipped. Suite v1 pins the fixtures, acceptance criteria, slices, model, harness, and environment. `teto run` captures repeated trials in fresh workspaces with timeout and cost limits. `teto score suite-run` reports quality, tool behavior, reliability, latency, cost, and coverage by slice. PR CI runs a scripted smoke suite, and live suites have a separate opt-in schedule.
+
+`teto gate` applies a versioned standalone policy with critical checks, calibrated thresholds, and observation alongside the existing paired regression gate. Model graders require human-label calibration before entering a release policy.
 
 ## v0.4 · Shared evaluation service
 

@@ -26,7 +26,7 @@ jobs:
           SUITE_DIR: ${{ runner.temp }}/teto-suite
         run: |
           mkdir "$SUITE_DIR"
-          uv run --locked teto run --input examples/scripted-suite.json \
+          uv run --locked teto run --require-mode offline --input examples/scripted-suite.json \
             --harness examples/scripted-harness.py --artifact-id "${GITHUB_SHA}" \
             --output "$SUITE_DIR/run.json"
           for output in score rescore; do
