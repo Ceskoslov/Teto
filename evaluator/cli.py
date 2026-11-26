@@ -12,6 +12,7 @@ from .agent_runs import compare_runs, import_nausicaa, parse_agent_run
 from .core import evaluate
 from .runner import run_suite
 from .scoring import METRICS, score_artifact
+from .suite_scoring import SUITE_METRICS, score_suite_run
 from .suites import read_suite
 from .validation import InputValidationError, validate_request
 
@@ -88,7 +89,7 @@ def _parser(prog: str) -> argparse.ArgumentParser:
         "score", help="Score one saved artifact.", allow_abbrev=False
     )
     formats = scoring.add_subparsers(dest="format", required=True)
-    for name, metrics in METRICS.items():
+    for name, metrics in {**METRICS, "suite-run": SUITE_METRICS}.items():
         source = formats.add_parser(name, allow_abbrev=False)
         source.add_argument(
             "--input", type=Path, required=True, help="Evidence JSON file."
@@ -102,9 +103,13 @@ def _parser(prog: str) -> argparse.ArgumentParser:
             choices=metrics,
             help="Select a metric. Repeat to select several.",
         )
-        if name != "agent-run":
+        if name in {"nausicaa", "ohmu"}:
             source.add_argument(
                 "--artifact-id", required=True, help="Version or build ID."
+            )
+        if name == "suite-run":
+            source.add_argument(
+                "--suite", type=Path, required=True, help="Original Suite v1 JSON."
             )
         if name == "nausicaa":
             source.add_argument("--mode", choices=("core_only", "task"), required=True)
@@ -158,6 +163,8 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
     )
     if args.command == "score" and args.format == "ohmu":
         sources += (args.cases,)
+    if args.command == "score" and args.format == "suite-run":
+        sources += (args.suite,)
     if args.command == "run":
         sources += (args.harness,)
     try:
@@ -198,14 +205,17 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
             case "evaluate":
                 result = evaluate(validate_request(inputs[0]))
             case "score":
-                result = score_artifact(
-                    inputs[0],
-                    source=args.format,
-                    metrics=args.metric,
-                    artifact_id=getattr(args, "artifact_id", None),
-                    mode=getattr(args, "mode", None),
-                    annotations_text=inputs[1] if len(inputs) > 1 else None,
-                )
+                if args.format == "suite-run":
+                    result = score_suite_run(*inputs, metrics=args.metric)
+                else:
+                    result = score_artifact(
+                        inputs[0],
+                        source=args.format,
+                        metrics=args.metric,
+                        artifact_id=getattr(args, "artifact_id", None),
+                        mode=getattr(args, "mode", None),
+                        annotations_text=inputs[1] if len(inputs) > 1 else None,
+                    )
         contents = (
             json.dumps(
                 result,
