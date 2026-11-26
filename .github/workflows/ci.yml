@@ -34,6 +34,9 @@ jobs:
               --suite examples/scripted-suite.json --output "$SUITE_DIR/$output.json"
           done
           cmp "$SUITE_DIR/score.json" "$SUITE_DIR/rescore.json"
+          uv run --locked teto gate --input "$SUITE_DIR/run.json" \
+            --suite examples/scripted-suite.json --policy examples/scripted-policy.json \
+            --output "$SUITE_DIR/gate.json"
           uv run --locked python - "$SUITE_DIR/score.json" <<'PY'
           import json
           import sys

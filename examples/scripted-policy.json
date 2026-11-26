@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "uppercase-smoke-policy-v1",
+  "suite_sha256": "4243af7b50cc46164b4f745de49c9690710373dfb4da9f41ccb0ebaa0e6c3ee0",
+  "gates": [
+    {"id": "critical-completion", "kind": "critical", "metric": "trial_completed"},
+    {"id": "critical-quality", "kind": "critical", "metric": "verified_success"},
+    {"id": "critical-tools", "kind": "critical", "metric": "tool_expectations"},
+    {"id": "latency", "kind": "observe", "metric": "latency_ms"},
+    {"id": "cost", "kind": "observe", "metric": "cost_microusd"}
+  ]
+}

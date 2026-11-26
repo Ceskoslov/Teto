@@ -12,6 +12,7 @@ from .agent_runs import compare_runs, import_nausicaa, parse_agent_run
 from .core import evaluate
 from .runner import run_suite
 from .scoring import METRICS, score_artifact
+from .suite_policy import gate_suite_run
 from .suite_scoring import SUITE_METRICS, score_suite_run
 from .suites import read_suite
 from .validation import InputValidationError, validate_request
@@ -80,7 +81,14 @@ def _parser(prog: str) -> argparse.ArgumentParser:
     runner.add_argument("--harness", type=Path, required=True, help="Pinned Python script.")
     runner.add_argument("--artifact-id", required=True, help="Version or build ID.")
 
-    for subcommand in (command, importer, comparison, runner):
+    gate = commands.add_parser(
+        "gate", help="Apply a standalone release policy.", allow_abbrev=False
+    )
+    gate.add_argument("--input", type=Path, required=True, help="Suite Run v1 JSON.")
+    gate.add_argument("--suite", type=Path, required=True, help="Original Suite v1 JSON.")
+    gate.add_argument("--policy", type=Path, required=True, help="Standalone policy JSON.")
+
+    for subcommand in (command, importer, comparison, runner, gate):
         subcommand.add_argument(
             "--output", type=Path, required=True, help="Destination JSON file."
         )
@@ -167,6 +175,8 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
         sources += (args.suite,)
     if args.command == "run":
         sources += (args.harness,)
+    if args.command == "gate":
+        sources += (args.suite, args.policy)
     try:
         if any(_same_file(source, args.output) for source in sources):
             print(
@@ -176,7 +186,7 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
         if args.command == "run":
             suite_text = args.input.read_bytes().decode("utf-8")
             harness = args.harness.read_bytes()
-        elif args.command == "score":
+        elif args.command in {"score", "gate"}:
             # Preserve the original newlines for evidence and annotation digests.
             inputs = [source.read_bytes().decode("utf-8") for source in sources]
         else:
@@ -204,6 +214,8 @@ def main(argv: list[str] | None = None, *, prog: str = "python -m evaluator") ->
                 )
             case "evaluate":
                 result = evaluate(validate_request(inputs[0]))
+            case "gate":
+                result = gate_suite_run(*inputs)
             case "score":
                 if args.format == "suite-run":
                     result = score_suite_run(*inputs, metrics=args.metric)
