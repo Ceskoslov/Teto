@@ -44,7 +44,7 @@ def wait_ready(base_url):
 
 
 @contextmanager
-def server(mode, image):
+def server(mode, image, *, env=None):
     if mode == "docker":
         subprocess.run(["docker", "info"], check=True, capture_output=True)
         subprocess.run(["docker", "build", "--tag", image, "."], cwd=ROOT, check=True)
@@ -108,6 +108,7 @@ def server(mode, image):
                     "--no-access-log",
                 ],
                 cwd=ROOT,
+                env=env,
                 pass_fds=(listener.fileno(),),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

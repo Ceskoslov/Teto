@@ -2,6 +2,82 @@
 
 Teto runs pinned agent evaluation suites, scores saved evidence offline, and applies standalone or paired release policies. The text evaluator also supports paired LLM responses through the CLI and FastAPI.
 
+## Shared evaluation service
+
+The opt-in Jobs API v1 queues suite runs and scores evidence submitted by evaluation producers. The API and worker share one SQLite database on the same host. This example configures the included scripted suite and starts the API on loopback.
+
+```bash
+uv sync --locked --python 3.13.12
+jobs_dir="$(mktemp -d)"
+mkdir -p "$jobs_dir/bundles/scripted"
+cp examples/scripted-suite.json "$jobs_dir/bundles/scripted/suite.json"
+cp examples/scripted-harness.py "$jobs_dir/bundles/scripted/harness.py"
+cp examples/scripted-policy.json "$jobs_dir/bundles/scripted/policy.json"
+export TETO_JOB_DB="$jobs_dir/jobs.sqlite"
+job_token="$(uv run --locked python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+uv run --locked python -m evaluator.worker &
+TETO_JOB_TOKEN="$job_token" TETO_JOB_BUNDLES="$jobs_dir/bundles" \
+  uv run --locked uvicorn evaluator.api:app --host 127.0.0.1 --port 8000 --no-access-log &
+```
+
+Once the API is up, submit a run and use the returned `status_url` to poll for completion.
+
+```bash
+curl --fail-with-body -H "Authorization: Bearer $job_token" \
+  -H 'Idempotency-Key: scripted-smoke-1' -H 'Content-Type: application/json' \
+  --data '{"schema_version":1,"kind":"run","bundle":"scripted","artifact_id":"scripted-smoke"}' \
+  http://127.0.0.1:8000/v1/jobs
+```
+
+| Method and path | Result |
+| --- | --- |
+| `POST /v1/jobs` | Returns `202`, a job ID, and a status URL. An equivalent submission with the same key returns the same ID. Reusing a key with different content returns `409`. |
+| `GET /v1/jobs/{id}` | Returns `queued`, `running`, `succeeded`, or `failed`, with UTC timestamps and an error code when applicable. |
+| `GET /v1/jobs/{id}/evidence/{name}` | Downloads stored bytes. Names are `input.json`, `cases.json`, `suite.json`, `policy.json`, and `run.json` where available. |
+| `GET /v1/jobs/{id}/reports/{name}` | Downloads `score.json` or, when a suite policy is supplied, `gate.json`. A `hold` recommendation is a completed evaluation. |
+
+All job endpoints require the bearer token. Downloads return `404` until the requested file exists. The server snapshots the registered bundle when it queues a run. Keep `suite.json`, `harness.py`, and the optional `policy.json` together under the bundle name. The worker checks the suite and harness pins and applies the same budget and timeout controls as `teto run`.
+
+### Submit completed evidence
+
+Send `{"schema_version":1,"kind":"import","evidence":{...}}` to the same endpoint. Encode each artifact as a JSON string containing its original UTF-8 file text, including line endings. This preserves the input digests and lets clients download the original evidence. The total HTTP request body may be up to 16 MiB.
+
+| `evidence.format` | Other `evidence` fields |
+| --- | --- |
+| `nausicaa` | `input` is the offline `task-baseline-v1` summary. Include `mode` (`task` or `core_only`) and `artifact_id`. |
+| `ohmu` | `input` is the exporter's `evaluation.json`. Include the original annotations as `cases` and an `artifact_id`. |
+| `agent-run` | `input` is the Agent Run v1 artifact, which already contains its artifact ID. |
+| `suite-run` | `input` is a Suite Run v1 artifact. Include `suite` and optionally `policy` for a gate report. |
+
+For example, package the Ohmu fixture with Python and pipe it to the API.
+
+```bash
+uv run --locked python - <<'PY' | curl --fail-with-body \
+  -H "Authorization: Bearer $job_token" -H 'Idempotency-Key: ohmu-example-1' \
+  -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:8000/v1/jobs
+import json
+from pathlib import Path
+
+print(json.dumps({
+    "schema_version": 1,
+    "kind": "import",
+    "evidence": {
+        "format": "ohmu",
+        "artifact_id": "ohmu-example",
+        "input": Path("examples/ohmu-evaluation.json").read_bytes().decode("utf-8"),
+        "cases": Path("examples/ohmu-cases.json").read_bytes().decode("utf-8"),
+    },
+}))
+PY
+```
+
+### Run the service
+
+- Set `TETO_JOB_DB` to the same absolute file path for the API and worker. The parent directory must exist and be writable by both processes. Use a private, persistent local volume to retain evidence, reports, and idempotency keys across restarts. The worker supports one active process per database.
+- Set `TETO_JOB_TOKEN` on the API process. The token grants access to all jobs and stored evidence. Use HTTPS for remote clients and give the token only to trusted producers and operators. Set `TETO_JOB_BUNDLES` to a directory managed by operators when allowing suite launches. Review registered harnesses and supply any provider credentials through the worker's environment.
+- Submit with a new key for a new evaluation and reuse the same key on network retries. Queued work survives restarts. On recovery, the worker marks previously claimed jobs as `failed` with `WORKER_INTERRUPTED` and keeps any stored evidence. Before resubmitting an interrupted live job with a new key, account for any provider spend from the original attempt.
+
 ## Reproducible runs and standalone policies
 
 The included smoke suite pins Linux x86-64 and Python 3.13.12. It runs two fixtures twice with a scripted harness. Start with [the suite](examples/scripted-suite.json), [the harness](examples/scripted-harness.py), and [the policy](examples/scripted-policy.json).

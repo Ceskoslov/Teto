@@ -22,7 +22,7 @@ Shipped. Suite v1 pins the fixtures, acceptance criteria, slices, model, harness
 
 ## v0.4 · Shared evaluation service
 
-Run the same scoring and policy logic behind an asynchronous job API. One path launches a run through a worker, and another accepts completed evidence from a Nausicaa host plugin or an Ohmu exporter. Both share idempotent submission, job status, evidence storage, and report retrieval.
+Shipped. The opt-in Jobs API v1 queues worker launches from registered suite bundles and accepts completed Nausicaa, Ohmu, Agent Run v1, and Suite Run v1 evidence. Both paths share idempotent submission, durable status, evidence storage, and report retrieval. The worker uses the CLI's scorers and applies the standalone policy to suite evidence when supplied. CI compares the HTTP service's reports byte for byte with the CLI.
 
 ## Later · Production feedback
 

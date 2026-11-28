@@ -99,6 +99,12 @@ jobs:
           assert ohmu["summary"]["expected_source_recall"]["mean"] == 0.5
           assert ohmu["summary"]["abstention"]["counts"]["unscored"] == 1
           PY
+      - name: Verify asynchronous jobs and CLI report parity
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/teto-evidence
+        run: |
+          uv run --locked python scripts/verify_jobs.py \
+            --nausicaa "$EVIDENCE_DIR/nausicaa/summary.json"
       - name: Archive evaluation evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
