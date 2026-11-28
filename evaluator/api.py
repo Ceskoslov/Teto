@@ -1,11 +1,15 @@
 """HTTP adapter for the same strict parser and evaluator used by the CLI."""
 
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from .core import EVALUATOR_VERSION, evaluate
+from .job_api import job_router
 from .validation import InputValidationError, validate_request
 
 app = FastAPI(
@@ -13,6 +17,16 @@ app = FastAPI(
     version=EVALUATOR_VERSION,
     debug=False,
 )
+
+if job_db := os.environ.get("TETO_JOB_DB"):
+    bundle_root = os.environ.get("TETO_JOB_BUNDLES")
+    app.include_router(
+        job_router(
+            Path(job_db),
+            os.environ.get("TETO_JOB_TOKEN", ""),
+            Path(bundle_root).resolve() if bundle_root else None,
+        )
+    )
 
 
 def _error(status: int, code: str, issue_code: str) -> JSONResponse:
@@ -31,14 +45,15 @@ def _error(status: int, code: str, issue_code: str) -> JSONResponse:
 async def http_error_handler(
     request: Request, exception: HTTPException
 ) -> JSONResponse:
-    codes = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
+    codes = {401: "AUTHENTICATION_REQUIRED", 404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
     response = _error(
         exception.status_code,
         "HTTP_ERROR",
         codes.get(exception.status_code, "REQUEST_FAILED"),
     )
-    if exception.headers and "Allow" in exception.headers:
-        response.headers["Allow"] = exception.headers["Allow"]
+    for name in ("Allow", "WWW-Authenticate"):
+        if exception.headers and name in exception.headers:
+            response.headers[name] = exception.headers[name]
     return response
 
 

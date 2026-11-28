@@ -134,10 +134,16 @@ class JobStore:
                 "UPDATE jobs SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (job_id,),
             )
-            files = dict(db.execute(
-                "SELECT name, content FROM job_files WHERE job_id = ?", (job_id,)
-            ))
+            files = dict(
+                db.execute(
+                    "SELECT name, content FROM job_files WHERE job_id = ?", (job_id,)
+                )
+            )
             return WorkItem(job_id, json.loads(row["options"]), files)
+
+    def record_run(self, job_id: str, content: bytes) -> None:
+        with self._connect(write=True) as db:
+            self._write_files(db, job_id, {"run.json": content})
 
     def finish(self, job_id: str, files: dict[str, bytes], error: dict | None) -> None:
         with self._connect(write=True) as db:

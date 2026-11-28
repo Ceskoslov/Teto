@@ -16,7 +16,7 @@ class JobStoreTests(unittest.TestCase):
 
     def submit(self, key="submission", fingerprint="digest"):
         return self.store.submit(
-            key, fingerprint, {"kind": "import"}, {"input.json": b'{}\r\n'}
+            key, fingerprint, {"kind": "import"}, {"input.json": b"{}\r\n"}
         )
 
     def test_concurrent_retries_create_one_job(self):
@@ -29,7 +29,7 @@ class JobStoreTests(unittest.TestCase):
         with self.store.worker():
             item = self.store.claim()
             self.assertEqual(item.id, job_id)
-            self.assertEqual(item.files["input.json"], b'{}\r\n')
+            self.assertEqual(item.files["input.json"], b"{}\r\n")
             self.assertIsNone(self.store.claim())
             self.store.finish(job_id, {"score.json": b"{}"}, None)
         reopened = JobStore(self.path)
@@ -48,7 +48,7 @@ class JobStoreTests(unittest.TestCase):
             status = reopened.status(interrupted)
             self.assertEqual(status["status"], "failed")
             self.assertEqual(status["error"], {"code": "WORKER_INTERRUPTED"})
-            self.assertEqual(reopened.file(interrupted, "input.json"), b'{}\r\n')
+            self.assertEqual(reopened.file(interrupted, "input.json"), b"{}\r\n")
             self.assertEqual(reopened.claim().id, queued)
             self.assertIsNone(reopened.claim())
 
@@ -57,7 +57,9 @@ class JobStoreTests(unittest.TestCase):
         with self.store.worker():
             self.store.claim()
             with self.assertRaises(sqlite3.IntegrityError):
-                self.store.finish(job_id, {"score.json": b"{}", "input.json": b"replaced"}, None)
+                self.store.finish(
+                    job_id, {"score.json": b"{}", "input.json": b"replaced"}, None
+                )
             self.assertEqual(self.store.status(job_id)["status"], "running")
             self.assertIsNone(self.store.file(job_id, "score.json"))
-            self.assertEqual(self.store.file(job_id, "input.json"), b'{}\r\n')
+            self.assertEqual(self.store.file(job_id, "input.json"), b"{}\r\n")

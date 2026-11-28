@@ -119,12 +119,26 @@ def _gate_result(gate: Gate, summary: dict, rows: list[dict]) -> dict:
     return {**result, "status": "pass" if reason is None else "hold", "reason": reason}
 
 
-def gate_suite_run(text: str, suite_text: str, policy_text: str) -> dict:
-    policy = read_contract(policy_text, Policy, "INVALID_SUITE_POLICY")
-    report = score_suite_run(text, suite_text)
-    evidence = report["evidence"]
-    if evidence["suite_sha256"] != policy.suite_sha256:
+def get_policy(policy_text: str) -> Policy:
+    return read_contract(policy_text, Policy, "INVALID_SUITE_POLICY")
+
+
+def check_policy_suite(policy: Policy, sha256: str, slices: set[str]) -> None:
+    if sha256 != policy.suite_sha256:
         raise invalid("POLICY_SUITE_DIGEST_MISMATCH")
+    if any(gate.slice is not None and gate.slice not in slices for gate in policy.gates):
+        raise invalid("UNKNOWN_POLICY_SLICE")
+
+
+def gate_suite_run(text: str, suite_text: str, policy_text: str) -> dict:
+    policy = get_policy(policy_text)
+    report = score_suite_run(text, suite_text)
+    return apply_suite_policy(report, policy, digest(policy_text.encode("utf-8")))
+
+
+def apply_suite_policy(report: dict, policy: Policy, policy_sha256: str) -> dict:
+    evidence = report["evidence"]
+    check_policy_suite(policy, evidence["suite_sha256"], set(report["slices"]))
 
     results = []
     for gate in policy.gates:
@@ -132,8 +146,6 @@ def gate_suite_run(text: str, suite_text: str, policy_text: str) -> dict:
             summary = report["summary"]
             rows = report["trials"]
         else:
-            if gate.slice not in report["slices"]:
-                raise invalid("UNKNOWN_POLICY_SLICE")
             summary = report["slices"][gate.slice]["summary"]
             rows = [row for row in report["trials"] if gate.slice in row["slices"]]
         results.append(_gate_result(gate, summary[gate.metric], rows))
@@ -142,7 +154,7 @@ def gate_suite_run(text: str, suite_text: str, policy_text: str) -> dict:
         "suite_policy_report_schema_version": 1,
         "evidence": evidence,
         "scorers_sha256": report["scorers_sha256"],
-        "policy_sha256": digest(policy_text.encode("utf-8")),
+        "policy_sha256": policy_sha256,
         "policy": policy.model_dump(mode="json"),
         "gates": results,
         "recommendation": {
